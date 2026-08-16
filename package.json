@@ -1,0 +1,21 @@
+{
+  "name": "mailguard-dlp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MailGuard DLP — a personal learning project: an email data-loss-prevention policy console (Vue 3 + Hono + AWS). Not affiliated with any employer.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "typescript": "5.7.2"
+  }
+}
