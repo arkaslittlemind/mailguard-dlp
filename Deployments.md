@@ -75,14 +75,16 @@ pnpm --filter @mailguard/api db:reset
 graph TD
   User((Browser)) -->|HTTPS| CF[CloudFront]
   CF --> S3[(S3 bucket<br/>Vue static build)]
-  User -->|HTTPS REST| URL[Lambda Function URL]
-  URL --> L[Lambda<br/>Express app]
+  User -->|HTTPS REST| GW[API Gateway<br/>HTTP API]
+  GW --> L[Lambda<br/>Express app]
   L -->|IAM role| D[(DynamoDB<br/>policies · audit)]
 ```
 
-We use a **Lambda Function URL** (a built-in HTTPS endpoint for a Lambda) instead
-of API Gateway to keep the footprint small — one fewer service to manage. An
-alternative with API Gateway is noted at the end.
+The public entry point for the API is an **API Gateway HTTP API** proxying every
+request to the Lambda. (A Lambda **Function URL** is a lighter-weight option and
+is shown as an alternative at the end — but on some accounts an `auth = NONE`
+Function URL returns `403` for anonymous callers, whereas an HTTP API is public
+by default, so we use API Gateway as the reliable default.)
 
 ### Prerequisites
 1. An AWS account and an IAM user/role with permissions for DynamoDB, Lambda,
@@ -111,8 +113,8 @@ pnpm --filter @mailguard/api add -D esbuild
 import serverless from 'serverless-http';
 import { createApp } from './app.js';
 
-// Lambda Function URLs deliver API-Gateway-v2-shaped events, which
-// serverless-http understands out of the box.
+// API Gateway HTTP APIs deliver v2-format events, which serverless-http
+// understands out of the box (so does a Lambda Function URL, if you use one).
 export const handler = serverless(createApp());
 ```
 
@@ -220,7 +222,7 @@ aws dynamodb list-tables --region ap-northeast-1
 
 ---
 
-### Step 4 — Lambda + Function URL
+### Step 4 — Lambda + API Gateway
 
 `infra/lambda.tf`
 ```hcl
@@ -290,29 +292,55 @@ resource "aws_lambda_function" "api" {
   }
 }
 
-# --- Public HTTPS endpoint with CORS, no API Gateway needed ---
-resource "aws_lambda_function_url" "api" {
-  function_name      = aws_lambda_function.api.function_name
-  authorization_type = "NONE"
-  cors {
-    allow_origins = ["*"]           # tighten to your CloudFront domain in real use
-    allow_methods = ["*"]
-    allow_headers = ["content-type"]
-  }
+```
+(The Lambda file ends at the function — the public entry point lives in its own
+file below.)
+
+`infra/apigateway.tf`
+```hcl
+# Public entry point: an API Gateway HTTP API that proxies every request to the
+# Lambda. HTTP APIs are publicly reachable by default (no anonymous-invoke
+# resource policy to configure), which is why this is the reliable default.
+#
+# CORS is handled by the Express app's own cors() middleware, so we do NOT set
+# cors_configuration here — doing both sends duplicate CORS headers, which
+# browsers reject. The $default route forwards every method/path (including the
+# OPTIONS preflight) to Express.
+
+resource "aws_apigatewayv2_api" "api" {
+  name          = "${var.project}-http-api"
+  protocol_type = "HTTP"
 }
 
-# REQUIRED for a public (NONE) Function URL. The AWS Console adds this for you,
-# but Terraform does not — without it every request returns 403 Forbidden.
-resource "aws_lambda_permission" "public_url" {
-  statement_id           = "AllowPublicFunctionUrlInvoke"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.api.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
+resource "aws_apigatewayv2_integration" "api" {
+  api_id                 = aws_apigatewayv2_api.api.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.api.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  api_id    = aws_apigatewayv2_api.api.id
+  route_key = "$default" # catch-all; Express does the routing
+  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
+}
+
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.api.id
+  name        = "$default"
+  auto_deploy = true
+}
+
+resource "aws_lambda_permission" "apigw" {
+  statement_id  = "AllowApiGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.api.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.api.execution_arn}/*/*"
 }
 
 output "api_url" {
-  value = aws_lambda_function_url.api.function_url
+  value = aws_apigatewayv2_stage.default.invoke_url
 }
 ```
 
@@ -320,33 +348,44 @@ Apply and grab the URL:
 ```bash
 pnpm --filter @mailguard/api build:lambda   # rebuild if you changed code
 terraform apply
-terraform output api_url                     # https://xxxx.lambda-url.<region>.on.aws/
+terraform output api_url                     # https://xxxx.execute-api.<region>.amazonaws.com/
 ```
-Verify:
+Verify (open in a browser, or use curl.exe on Windows):
 ```bash
 curl "$(terraform output -raw api_url)health"     # {"ok":true}
 ```
 
 ---
 
-### Step 5 — Seed the cloud tables
+### Step 5 — Seed the cloud tables (via the live API)
 
-Run the same seed script, but against **real AWS** (no local endpoint). From the repo root:
+The tables start empty (`/policies` returns `[]`). The cleanest way to seed them
+is **through the deployed API itself** — the POST goes API Gateway → Lambda →
+DynamoDB using the Lambda's IAM role, so there are no local-credential or
+endpoint pitfalls. Paste this into PowerShell (replace the URL with your
+`terraform output -raw api_url`, no trailing slash):
 
-```bash
-# PowerShell
-$env:DYNAMODB_ENDPOINT=""; $env:AWS_REGION="ap-northeast-1"; `
-$env:POLICIES_TABLE="mailguard-policies"; $env:AUDIT_TABLE="mailguard-audit"; `
-pnpm --filter @mailguard/api db:seed
+```powershell
+$api = "https://xxxx.execute-api.ap-northeast-1.amazonaws.com"
+$policies = @(
+  @{ name="Block credit card numbers"; enabled=$true;  action="block"; definition=@{ type="pii"; detector="credit_card" } },
+  @{ name="Internal recipients only";  enabled=$true;  action="block"; definition=@{ type="recipientDomain"; mode="allowlist"; domains=@("corp.example") } },
+  @{ name="Flag confidential";          enabled=$true;  action="warn";  definition=@{ type="keyword"; term="confidential"; caseSensitive=$false } },
+  @{ name="Block executable attachments"; enabled=$true; action="block"; definition=@{ type="attachment"; blockedExtensions=@("exe","bat","js","scr") } },
+  @{ name="Log phone numbers";          enabled=$false; action="log";   definition=@{ type="pii"; detector="phone" } }
+)
+foreach ($p in $policies) {
+  Invoke-RestMethod -Method Post -Uri "$api/policies" -ContentType "application/json" -Body ($p | ConvertTo-Json -Depth 5) | Out-Null
+  Write-Host "created: $($p.name)"
+}
 ```
-```bash
-# bash
-DYNAMODB_ENDPOINT= AWS_REGION=ap-northeast-1 \
-POLICIES_TABLE=mailguard-policies AUDIT_TABLE=mailguard-audit \
-pnpm --filter @mailguard/api db:seed
-```
-Your normal AWS credentials (from `aws configure`) are used automatically because
-`DYNAMODB_ENDPOINT` is empty. Confirm: `curl "$(terraform output -raw api_url)policies"`.
+Confirm by opening `<api_url>/policies` — you should now see 5 policies.
+
+> Alternative: run the local seed script against real AWS with
+> `pnpm --filter @mailguard/api db:seed`, but first ensure `apps/api/.env` has
+> **no** `DYNAMODB_ENDPOINT` and **no** `AWS_*` credential lines, so the SDK uses
+> your `aws configure` profile against the real service. The API-POST method
+> above avoids that setup entirely.
 
 ---
 
@@ -433,11 +472,11 @@ Apply:
 terraform apply          # CloudFront takes a few minutes to deploy
 ```
 
-Build the frontend pointed at your Lambda URL, then upload.
+Build the frontend pointed at your API Gateway URL, then upload.
 
 First get the API URL:
 ```bash
-cd infra && terraform output -raw api_url    # e.g. https://abc.lambda-url.<region>.on.aws/
+cd infra && terraform output -raw api_url    # e.g. https://abc.execute-api.<region>.amazonaws.com/
 ```
 
 Create `apps/web/.env.production` with the URL **minus its trailing slash** (the
@@ -445,7 +484,7 @@ client joins `BASE + "/policies"`, so a trailing slash would produce `//policies
 and break routing). Put exactly these two lines in the file — editing it in your
 editor avoids shell-quoting and file-encoding (BOM) pitfalls:
 ```
-VITE_API_BASE_URL=https://abc.lambda-url.ap-northeast-1.on.aws
+VITE_API_BASE_URL=https://abc.execute-api.ap-northeast-1.amazonaws.com
 VITE_ENABLE_MOCKS=false
 ```
 
@@ -454,12 +493,12 @@ Build, then **confirm the URL was baked in** before uploading:
 pnpm --filter @mailguard/web build
 ```
 ```powershell
-# PowerShell: should print a line containing your Lambda URL
-Select-String -Path apps\web\dist\assets\*.js -Pattern "lambda-url" | Select-Object -First 1
+# PowerShell: should print a line containing your API URL
+Select-String -Path apps\web\dist\assets\*.js -Pattern "execute-api" | Select-Object -First 1
 ```
 ```bash
 # bash equivalent
-grep -l "lambda-url" apps/web/dist/assets/*.js
+grep -l "execute-api" apps/web/dist/assets/*.js
 ```
 If that finds nothing, the env file wasn't read — fix it before deploying.
 
@@ -467,10 +506,15 @@ Upload (use your actual bucket name):
 ```bash
 aws s3 sync apps/web/dist s3://<your-bucket-name> --delete
 ```
-(Or simply `aws s3 sync apps/web/dist s3://<your-bucket-name> --delete`.)
 
 Invalidate the CDN cache so the new build shows immediately:
+```powershell
+# PowerShell
+$distId = aws cloudfront list-distributions --query "DistributionList.Items[?Origins.Items[0].Id=='s3-web'].Id" --output text
+aws cloudfront create-invalidation --distribution-id $distId --paths "/*"
+```
 ```bash
+# bash
 DIST_ID=$(aws cloudfront list-distributions \
   --query "DistributionList.Items[?Origins.Items[0].Id=='s3-web'].Id" --output text)
 aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
@@ -505,9 +549,13 @@ DynamoDB tables are deleted with their data. The S3 bucket must be empty first; 
 ---
 
 ### Going further (optional)
-- **API Gateway** instead of a Function URL: add `aws_apigatewayv2_api` +
-  integration + route + stage, and a `aws_lambda_permission` for API Gateway.
-  Worth it when you need custom domains, usage plans, or request throttling.
+- **Lambda Function URL** instead of API Gateway: lighter (one fewer service) via
+  `aws_lambda_function_url` (`authorization_type = "NONE"`) plus an
+  `aws_lambda_permission` with `function_url_auth_type = "NONE"`. Note that some
+  accounts return `403` for anonymous Function-URL calls even when configured
+  correctly — hence API Gateway as the default here.
+- **Tighten CORS**: the HTTP API forwards to Express, whose `cors()` currently
+  allows all origins. Restrict it to your CloudFront domain for production.
 - **Custom domain + Route 53**: an ACM cert (in `us-east-1` for CloudFront) +
   `aws_route53_record` aliases for the distribution and the API.
 - **CI/CD**: a GitHub Actions workflow that runs tests, `build:lambda`,
