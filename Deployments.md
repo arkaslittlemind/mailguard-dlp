@@ -301,6 +301,16 @@ resource "aws_lambda_function_url" "api" {
   }
 }
 
+# REQUIRED for a public (NONE) Function URL. The AWS Console adds this for you,
+# but Terraform does not — without it every request returns 403 Forbidden.
+resource "aws_lambda_permission" "public_url" {
+  statement_id           = "AllowPublicFunctionUrlInvoke"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.api.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
+
 output "api_url" {
   value = aws_lambda_function_url.api.function_url
 }
@@ -423,14 +433,39 @@ Apply:
 terraform apply          # CloudFront takes a few minutes to deploy
 ```
 
-Build the frontend pointed at your Lambda URL, then upload:
-```bash
-# from repo root — note the trailing slash matters for the base URL
-API_URL="$(cd infra && terraform output -raw api_url)"
-printf 'VITE_API_BASE_URL=%s\nVITE_ENABLE_MOCKS=false\n' "${API_URL%/}" > apps/web/.env.production
+Build the frontend pointed at your Lambda URL, then upload.
 
+First get the API URL:
+```bash
+cd infra && terraform output -raw api_url    # e.g. https://abc.lambda-url.<region>.on.aws/
+```
+
+Create `apps/web/.env.production` with the URL **minus its trailing slash** (the
+client joins `BASE + "/policies"`, so a trailing slash would produce `//policies`
+and break routing). Put exactly these two lines in the file — editing it in your
+editor avoids shell-quoting and file-encoding (BOM) pitfalls:
+```
+VITE_API_BASE_URL=https://abc.lambda-url.ap-northeast-1.on.aws
+VITE_ENABLE_MOCKS=false
+```
+
+Build, then **confirm the URL was baked in** before uploading:
+```bash
 pnpm --filter @mailguard/web build
-aws s3 sync apps/web/dist "s3://$(cd infra && terraform output -raw web_url >/dev/null; echo $web_bucket_name)" --delete
+```
+```powershell
+# PowerShell: should print a line containing your Lambda URL
+Select-String -Path apps\web\dist\assets\*.js -Pattern "lambda-url" | Select-Object -First 1
+```
+```bash
+# bash equivalent
+grep -l "lambda-url" apps/web/dist/assets/*.js
+```
+If that finds nothing, the env file wasn't read — fix it before deploying.
+
+Upload (use your actual bucket name):
+```bash
+aws s3 sync apps/web/dist s3://<your-bucket-name> --delete
 ```
 (Or simply `aws s3 sync apps/web/dist s3://<your-bucket-name> --delete`.)
 

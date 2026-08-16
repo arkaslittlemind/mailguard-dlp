@@ -75,6 +75,16 @@ resource "aws_lambda_function_url" "api" {
   }
 }
 
+# Required for a PUBLIC (auth_type = NONE) Function URL. The AWS Console adds
+# this automatically, but Terraform does not — without it every request is 403.
+resource "aws_lambda_permission" "public_url" {
+  statement_id           = "AllowPublicFunctionUrlInvoke"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.api.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
+
 output "api_url" {
   value = aws_lambda_function_url.api.function_url
 }
