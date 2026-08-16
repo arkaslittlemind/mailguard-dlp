@@ -6,6 +6,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+infra/build/
+apps/api/dist/
+
 # test / coverage
 coverage/
 playwright-report/
