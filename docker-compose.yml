@@ -1,0 +1,17 @@
+# DynamoDB Local — a full DynamoDB implementation that runs on your machine.
+# It speaks the exact same API as the real AWS service, so the app code is
+# identical; only the endpoint differs. No AWS account or internet needed.
+#
+#   docker compose up -d      # start it (detached)
+#   docker compose down       # stop it
+#
+# Note: "-inMemory" means data lives only in RAM and is wiped when the container
+# stops. That keeps setup simple (no file-permission issues). After a restart,
+# re-run `pnpm --filter @mailguard/api db:reset` to recreate + reseed.
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:2.5.2
+    container_name: mailguard-dynamodb
+    ports:
+      - '8000:8000'
+    command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory']
