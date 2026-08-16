@@ -1,0 +1,144 @@
+/*
+ * Design tokens + base styles.
+ * Light palette lives on :root; dark overrides live in a single block that
+ * responds to BOTH the OS preference and an explicit [data-theme] on <html>.
+ */
+:root {
+  /* neutrals */
+  --c-bg: #f6f7f9;
+  --c-surface: #ffffff;
+  --c-surface-2: #f0f2f5;
+  --c-border: #e2e5ea;
+  --c-border-strong: #cbd1da;
+  --c-text: #1b2330;
+  --c-text-muted: #5b6675;
+  --c-text-subtle: #8a93a2;
+
+  /* brand */
+  --c-primary: #3b5bdb;
+  --c-primary-hover: #314fc4;
+  --c-primary-text: #ffffff;
+  --c-primary-weak: #e7ecfd;
+
+  /* severity / semantic */
+  --c-high: #d64545;
+  --c-high-weak: #fdecec;
+  --c-medium: #c07a10;
+  --c-medium-weak: #fbf1dd;
+  --c-low: #5b6675;
+  --c-low-weak: #eef0f3;
+  --c-success: #2f9e6f;
+  --c-success-weak: #e5f4ee;
+
+  /* shape */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+
+  /* type */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Menlo", "Consolas", monospace;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-bg: #0f1420;
+    --c-surface: #171d2b;
+    --c-surface-2: #1e2636;
+    --c-border: #2a3345;
+    --c-border-strong: #3a4560;
+    --c-text: #e7ebf2;
+    --c-text-muted: #a3adbe;
+    --c-text-subtle: #6f7a8c;
+    --c-primary: #6f8cf5;
+    --c-primary-hover: #8399f7;
+    --c-primary-text: #0f1420;
+    --c-primary-weak: #1f2a45;
+    --c-high: #f0716f;
+    --c-high-weak: #3a1f22;
+    --c-medium: #e0a94d;
+    --c-medium-weak: #362a15;
+    --c-low: #a3adbe;
+    --c-low-weak: #232b3a;
+    --c-success: #4fbd8b;
+    --c-success-weak: #172a22;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --c-bg: #0f1420;
+  --c-surface: #171d2b;
+  --c-surface-2: #1e2636;
+  --c-border: #2a3345;
+  --c-border-strong: #3a4560;
+  --c-text: #e7ebf2;
+  --c-text-muted: #a3adbe;
+  --c-text-subtle: #6f7a8c;
+  --c-primary: #6f8cf5;
+  --c-primary-hover: #8399f7;
+  --c-primary-text: #0f1420;
+  --c-primary-weak: #1f2a45;
+  --c-high: #f0716f;
+  --c-high-weak: #3a1f22;
+  --c-medium: #e0a94d;
+  --c-medium-weak: #362a15;
+  --c-low: #a3adbe;
+  --c-low-weak: #232b3a;
+  --c-success: #4fbd8b;
+  --c-success-weak: #172a22;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--c-bg);
+  color: var(--c-text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Visible keyboard focus everywhere. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+}
+
+/* Screen-reader-only utility for accessible labels/announcements. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
