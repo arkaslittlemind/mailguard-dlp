@@ -64,27 +64,7 @@ resource "aws_lambda_function" "api" {
   }
 }
 
-# --- Public HTTPS endpoint with CORS, no API Gateway needed ---
-resource "aws_lambda_function_url" "api" {
-  function_name      = aws_lambda_function.api.function_name
-  authorization_type = "NONE"
-  cors {
-    allow_origins = ["*"] # tighten to your CloudFront domain in real use
-    allow_methods = ["*"]
-    allow_headers = ["content-type"]
-  }
-}
-
-# Required for a PUBLIC (auth_type = NONE) Function URL. The AWS Console adds
-# this automatically, but Terraform does not — without it every request is 403.
-resource "aws_lambda_permission" "public_url" {
-  statement_id           = "AllowPublicFunctionUrlInvoke"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.api.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
-
-output "api_url" {
-  value = aws_lambda_function_url.api.function_url
-}
+# The public entry point is an API Gateway HTTP API — see apigateway.tf.
+# (A Lambda Function URL with auth_type = NONE was tried first, but this account
+# returns 403 for anonymous Function-URL calls despite correct config. API
+# Gateway HTTP APIs are public by default and avoid that entirely.)
