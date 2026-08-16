@@ -1,3 +1,5 @@
+import '@fontsource-variable/inter';
+import '@fontsource-variable/space-grotesk';
 import { createPinia } from 'pinia';
 import { createApp } from 'vue';
 import App from './App.vue';

@@ -80,8 +80,10 @@ function onLocaleChange(event: Event): void {
   font-size: 22px;
 }
 .header__title {
-  font-size: 15px;
+  font-family: var(--font-display);
+  font-size: 16px;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 .header__tagline {
   font-size: 12px;
@@ -104,8 +106,9 @@ function onLocaleChange(event: Event): void {
   color: var(--c-text);
 }
 .header__link.router-link-active {
-  background: var(--c-primary-weak);
-  color: var(--c-primary);
+  background: var(--c-accent-weak);
+  color: var(--c-accent);
+  font-weight: 600;
 }
 .header__controls {
   margin-left: auto;

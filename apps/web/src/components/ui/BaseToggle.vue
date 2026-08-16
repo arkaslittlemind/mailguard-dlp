@@ -48,7 +48,7 @@ defineEmits<{ 'update:modelValue': [value: boolean] }>();
   transition: transform 0.15s;
 }
 .toggle__input:checked + .toggle__track {
-  background: var(--c-primary);
+  background: var(--c-success);
 }
 .toggle__input:checked + .toggle__track .toggle__thumb {
   transform: translateX(16px);
