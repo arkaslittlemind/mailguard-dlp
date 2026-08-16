@@ -1,0 +1,2 @@
+region          = "ap-region-1"
+web_bucket_name = "globally unique s3 bucket name"
