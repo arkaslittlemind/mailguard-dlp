@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@fontsource-variable/inter": "5.1.1",
@@ -21,11 +23,17 @@
     "zod": "3.24.1"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/user-event": "14.5.2",
+    "@testing-library/vue": "8.1.0",
     "@types/node": "22.10.2",
     "@vitejs/plugin-vue": "5.2.1",
+    "@vue/test-utils": "2.4.6",
+    "jsdom": "25.0.1",
     "msw": "2.7.0",
     "typescript": "5.7.2",
     "vite": "6.0.6",
+    "vitest": "2.1.8",
     "vue-tsc": "2.1.10"
   },
   "msw": {
